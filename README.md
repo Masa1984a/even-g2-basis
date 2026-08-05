@@ -137,6 +137,31 @@ npx evenhub pack app.json dist -o myapp.ehpk
 1 に備えて、取得したデータと表示中の画面は localStorage に保存し、
 復帰時はキャッシュから即描画してからネットワークを叩く作りにしている。
 
+## ストア公開 (Released)
+
+Beta Testing で満足に動くことを確認したら、同じ `.ehpk` をそのまま提出できる。
+状態は `Draft → Test → Submitted → Released` の一方向で進み、**Released になった
+バージョンは二度と編集・差し替えできない**(修正は常に新しいバージョンを出す
+fix-forward)。審査で見られる項目(App Submission & QA Guidelines 準拠):
+
+- [x] `min_sdk_version` が現行フロア `0.0.12` 以上(このリポジトリは `0.0.13` 済み)
+- [x] `name` が20文字以内で "Even" を含まない("Basis DRR" は該当なし)
+- [ ] **ストアアイコン** — 開発者ポータルの 24x24 ピクセルエディタで作る。前景・背景とも
+      モノクロ/グレースケールのみ(カラーは審査で弾かれる)
+- [ ] **プライバシーポリシー** — 申請している権限(`network`)を説明する文書のURLが必要
+- [ ] **スクリーンショット** — 実機の描画と一致している必要があり、公式ガイドは
+      **シミュレータのスクリーンショット機能**で撮ることを求めている
+      (`@evenrealities/evenhub-simulator`)。実機を目で撮った写真ではない
+- [ ] **リリースノート** — `supported_languages`(en/ja)ごとに1〜3行。「初回リリース」
+      ではなく何をするアプリかを書く
+
+提出前の最終確認:
+
+```bash
+npx evenhub login                              # ポータル認証(package_id チェックに必要)
+npx evenhub pack app.json dist -o myapp.ehpk -c  # -c で package_id の空き確認
+```
+
 ## 構成
 
 | ファイル | 役割 |
