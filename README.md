@@ -106,6 +106,12 @@ npx evenhub qr -u "https://<デプロイ先>/"
 
 ### Beta Testing の手順
 
+**パッケージを作り直すたびに `app.json` の `version` を上げる。** 上げないと、Even Hub に
+再アップロードして Beta group に push しても、スマホ側は古い WebView の中身を
+キャッシュしたままになることがある。Beta Testing の公式ドキュメントにも
+「再アップロードしても、明示的に再インストールするまで古いビルドが残る」旨の
+記載がある。
+
 ```bash
 npm run build
 npx evenhub pack app.json dist -o myapp.ehpk
@@ -115,6 +121,7 @@ npx evenhub pack app.json dist -o myapp.ehpk
 2. **Beta groups** タブでグループを作り、自分のメールを追加
 3. **Builds** タブで `.ehpk` をアップロードし、そのグループに push
 4. スマホの Even Realities App → **Me → Beta tester** → **Install**
+   (更新が反映されない場合は一度アンインストールしてから Install し直す)
 
 `app.json` の `permissions.network.whitelist` に取得先ドメインを列挙する必要がある。
 ここが漏れると実機で fetch がブロックされる。
