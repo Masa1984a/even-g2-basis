@@ -1,0 +1,22 @@
+{
+  "package_id": "com.masa1984a.basisdrr",
+  "edition": "202601",
+  "name": "Basis DRR",
+  "version": "1.0.0",
+  "min_app_version": "2.0.0",
+  "min_sdk_version": "0.0.7",
+  "entrypoint": "index.html",
+  "permissions": [
+    {
+      "name": "network",
+      "desc": "basis-tracker の公開API(/api/drr)から資産別DRRの日次データを取得します。",
+      "whitelist": [
+        "https://basis-tracker-smoky.vercel.app"
+      ]
+    }
+  ],
+  "supported_languages": [
+    "en",
+    "ja"
+  ]
+}

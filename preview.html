@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>G2 プレビュー — Basis DRR</title>
+  <style>
+    body { background: #111; color: #ccc; font-family: system-ui, sans-serif; padding: 20px; }
+    h1 { font-size: 16px; font-weight: 600; }
+    .row { display: flex; gap: 24px; flex-wrap: wrap; margin-top: 16px; }
+    figure { margin: 0; }
+    figcaption { font-size: 12px; color: #888; margin-bottom: 6px; }
+    canvas { image-rendering: pixelated; background: #000; border: 1px solid #333; }
+    .x2 { width: 576px; height: 288px; }
+    .status { font-size: 13px; color: #6c8; }
+  </style>
+</head>
+<body>
+  <h1>Even G2 チャートプレビュー <span class="status" id="status">…</span></h1>
+  <p style="font-size:12px;color:#888">左=実寸(288×144) 右=2倍拡大。グラスは緑16階調なので、輝度で読めるかを確認する。</p>
+  <div class="row" id="out"></div>
+  <script type="module" src="/src/preview.ts"></script>
+</body>
+</html>
