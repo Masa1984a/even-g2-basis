@@ -43,23 +43,35 @@
   <canvas id="out"></canvas>
 
   <div class="row">
-    <label><input type="checkbox" id="green" checked /> グラスの発色(緑)で書き出す</label>
     <label>
-      サイズ
-      <select id="scale">
-        <option value="1" selected>576 x 288 (ストア提出用・等倍)</option>
-        <option value="2">1152 x 576 (2倍)</option>
-        <option value="4">2304 x 1152 (4倍)</option>
+      範囲
+      <select id="mode">
+        <option value="screen" selected>画面全体 576×288 (ストア提出用)</option>
+        <option value="chart">チャートのみ 288×144 (図版用)</option>
       </select>
     </label>
+    <label>
+      倍率
+      <select id="scale">
+        <option value="1" selected>等倍</option>
+        <option value="2">2倍</option>
+        <option value="4">4倍</option>
+      </select>
+    </label>
+    <label><input type="checkbox" id="green" checked /> グラスの発色(緑)</label>
     <span id="dims"></span>
     <a id="download" href="#" download>PNG をダウンロード</a>
     <button id="save" type="button">shots/ に保存</button>
   </div>
 
   <p class="note">
-    G2 のキャンバスと同じ <code>576×288</code> に、実機と同じ配置で合成している。
-    <code>chart.ts でネイティブ 288×144 に描画</code> →
+    <strong>画面全体</strong>は G2 のキャンバスと同じ <code>576×288</code> に実機と同じ配置で
+    合成する(ストア提出用)。<strong>チャートのみ</strong>は画像コンテナの中身だけを
+    <code>288×144</code> で書き出す(記事や X 投稿で図版として使う用)。
+    倍率はニアレストネイバーの整数倍なのでにじまない。
+  </p>
+  <p class="note">
+    処理順は <code>chart.ts でネイティブ解像度に描画</code> →
     <code>LAYOUT の座標どおりに配置</code> →
     <code>4bit(16階調)に量子化</code> →
     <code>緑に変換</code>。

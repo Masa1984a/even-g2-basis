@@ -87,21 +87,35 @@ function quantize(ctx: CanvasRenderingContext2D, w: number, h: number, green: bo
   ctx.putImageData(img, 0, 0)
 }
 
+/** チャートだけを 288x144 で描く(テキストの枠を含めない)。 */
+function composeChartOnly(rows: DrrRow[]): HTMLCanvasElement {
+  const chart = document.createElement('canvas')
+  chart.width = CHART_W
+  chart.height = CHART_H
+  paintChart(chart.getContext('2d')!, rows, ASSETS, CHART_W, CHART_H)
+  return chart
+}
+
 /**
- * @param scale 1 ならストア提出用の 576x288。2以上は X 投稿など拡大表示向けに
- *              ニアレストネイバーで整数倍する(にじませない)。
+ * `screen` は実機の画面まるごと(576x288 基準) — ストア提出用。
+ * `chart` はチャートだけ(288x144 基準) — 記事や X 投稿で図版として使う用。
  */
+export type Mode = 'screen' | 'chart'
+
 function renderShareImage(
   rows: DrrRow[],
   canvas: HTMLCanvasElement,
   green: boolean,
-  scale: number
+  scale: number,
+  mode: Mode
 ) {
-  const screen = composeScreen(rows)
-  quantize(screen.getContext('2d')!, SCREEN_W, SCREEN_H, green)
+  const screen = mode === 'screen' ? composeScreen(rows) : composeChartOnly(rows)
+  const w = screen.width
+  const h = screen.height
+  quantize(screen.getContext('2d')!, w, h, green)
 
-  canvas.width = SCREEN_W * scale
-  canvas.height = SCREEN_H * scale
+  canvas.width = w * scale
+  canvas.height = h * scale
   const ctx = canvas.getContext('2d')!
   ctx.imageSmoothingEnabled = false
   ctx.fillStyle = '#000'
@@ -114,6 +128,7 @@ async function main() {
   const status = document.getElementById('status')!
   const greenBox = document.getElementById('green') as HTMLInputElement
   const scaleSel = document.getElementById('scale') as HTMLSelectElement
+  const modeSel = document.getElementById('mode') as HTMLSelectElement
   const dl = document.getElementById('download') as HTMLAnchorElement
   const save = document.getElementById('save') as HTMLButtonElement
   const dims = document.getElementById('dims')!
@@ -132,11 +147,13 @@ async function main() {
 
   function filename() {
     const green = greenBox.checked ? 'green' : 'grey'
-    return `store-screenshot-${canvas.width}x${canvas.height}-${green}.png`
+    return `${modeSel.value}-${canvas.width}x${canvas.height}-${green}.png`
   }
 
   function draw() {
-    renderShareImage(rows, canvas, greenBox.checked, Number(scaleSel.value))
+    renderShareImage(
+      rows, canvas, greenBox.checked, Number(scaleSel.value), modeSel.value as Mode
+    )
     dl.href = canvas.toDataURL('image/png')
     dl.download = filename()
     dims.textContent = `${canvas.width} x ${canvas.height}`
@@ -161,6 +178,7 @@ async function main() {
 
   greenBox.addEventListener('change', draw)
   scaleSel.addEventListener('change', draw)
+  modeSel.addEventListener('change', draw)
   draw()
 }
 
