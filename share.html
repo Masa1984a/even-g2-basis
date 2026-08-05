@@ -17,6 +17,15 @@
       max-width: 100%; height: auto;
       image-rendering: pixelated;
     }
+    /* 透過を目視確認するための市松模様 */
+    canvas.checker {
+      background-color: #6e7681;
+      background-image:
+        linear-gradient(45deg, #484f58 25%, transparent 25%, transparent 75%, #484f58 75%),
+        linear-gradient(45deg, #484f58 25%, transparent 25%, transparent 75%, #484f58 75%);
+      background-size: 16px 16px;
+      background-position: 0 0, 8px 8px;
+    }
     .row { display: flex; gap: 16px; align-items: center; margin: 14px 0; flex-wrap: wrap; }
     label { font-size: 13px; user-select: none; }
     select { background: #0d1117; color: #c9d1d9; border: 1px solid #30363d; border-radius: 5px; padding: 5px 8px; }
@@ -59,6 +68,7 @@
       </select>
     </label>
     <label><input type="checkbox" id="green" checked /> グラスの発色(緑)</label>
+    <label><input type="checkbox" id="alpha" /> 背景を透過</label>
     <span id="dims"></span>
     <a id="download" href="#" download>PNG をダウンロード</a>
     <button id="save" type="button">shots/ に保存</button>
@@ -69,6 +79,11 @@
     合成する(ストア提出用)。<strong>チャートのみ</strong>は画像コンテナの中身だけを
     <code>288×144</code> で書き出す(記事や X 投稿で図版として使う用)。
     倍率はニアレストネイバーの整数倍なのでにじまない。
+  </p>
+  <p class="note">
+    <strong>背景を透過</strong>すると黒い画素が透明になる。グラスのディスプレイは発光式で
+    黒い画素は光っておらず素通しなので、透過の方が実機の見え方に近い。色は最大輝度で固定して
+    明るさをアルファで表しているため、どんな背景に重ねても加算的な発光として自然に見える。
   </p>
   <p class="note">
     処理順は <code>chart.ts でネイティブ解像度に描画</code> →

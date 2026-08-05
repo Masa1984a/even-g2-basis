@@ -68,21 +68,39 @@ function composeScreen(rows: DrrRow[]): HTMLCanvasElement {
   return screen
 }
 
-/** 4bit 量子化と発色変換。ハードウェアがやることと同じ。 */
-function quantize(ctx: CanvasRenderingContext2D, w: number, h: number, green: boolean) {
+/**
+ * 4bit 量子化と発色変換。ハードウェアがやることと同じ。
+ *
+ * `transparent` のときは黒を透明にする。グラスのディスプレイは発光式で、
+ * 黒い画素は「光っていない」= 素通し。したがって透過の方が実機の見え方に近い。
+ * 色は最大輝度で固定して明るさをアルファで表すので、どんな背景に重ねても
+ * 加算的な発光として自然に見える。
+ */
+function quantize(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  green: boolean,
+  transparent: boolean
+) {
   const img = ctx.getImageData(0, 0, w, h)
   const d = img.data
+  const [fr, fg, fb] = green ? tint(255) : [255, 255, 255]
   for (let i = 0; i < d.length; i += 4) {
     const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]
     const level = Math.round((lum / 255) * 15) // 16階調
     const v = Math.round((level / 15) * 255)
-    if (green) {
+    if (transparent) {
+      d[i] = fr; d[i + 1] = fg; d[i + 2] = fb
+      d[i + 3] = v
+    } else if (green) {
       const [r, g, b] = tint(v)
       d[i] = r; d[i + 1] = g; d[i + 2] = b
+      d[i + 3] = 255
     } else {
       d[i] = v; d[i + 1] = v; d[i + 2] = v
+      d[i + 3] = 255
     }
-    d[i + 3] = 255
   }
   ctx.putImageData(img, 0, 0)
 }
@@ -107,19 +125,25 @@ function renderShareImage(
   canvas: HTMLCanvasElement,
   green: boolean,
   scale: number,
-  mode: Mode
+  mode: Mode,
+  transparent: boolean
 ) {
   const screen = mode === 'screen' ? composeScreen(rows) : composeChartOnly(rows)
   const w = screen.width
   const h = screen.height
-  quantize(screen.getContext('2d')!, w, h, green)
+  quantize(screen.getContext('2d')!, w, h, green, transparent)
 
   canvas.width = w * scale
   canvas.height = h * scale
   const ctx = canvas.getContext('2d')!
   ctx.imageSmoothingEnabled = false
-  ctx.fillStyle = '#000'
-  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  // 透過のときは黒で塗りつぶさない。塗ると背景が不透明になってしまう。
+  if (transparent) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+  } else {
+    ctx.fillStyle = '#000'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+  }
   ctx.drawImage(screen, 0, 0, canvas.width, canvas.height)
 }
 
@@ -129,6 +153,7 @@ async function main() {
   const greenBox = document.getElementById('green') as HTMLInputElement
   const scaleSel = document.getElementById('scale') as HTMLSelectElement
   const modeSel = document.getElementById('mode') as HTMLSelectElement
+  const alphaBox = document.getElementById('alpha') as HTMLInputElement
   const dl = document.getElementById('download') as HTMLAnchorElement
   const save = document.getElementById('save') as HTMLButtonElement
   const dims = document.getElementById('dims')!
@@ -147,13 +172,17 @@ async function main() {
 
   function filename() {
     const green = greenBox.checked ? 'green' : 'grey'
-    return `${modeSel.value}-${canvas.width}x${canvas.height}-${green}.png`
+    const alpha = alphaBox.checked ? '-alpha' : ''
+    return `${modeSel.value}-${canvas.width}x${canvas.height}-${green}${alpha}.png`
   }
 
   function draw() {
     renderShareImage(
-      rows, canvas, greenBox.checked, Number(scaleSel.value), modeSel.value as Mode
+      rows, canvas, greenBox.checked, Number(scaleSel.value),
+      modeSel.value as Mode, alphaBox.checked
     )
+    // 透過の確認用に、キャンバスの下に市松模様を敷く
+    canvas.classList.toggle('checker', alphaBox.checked)
     dl.href = canvas.toDataURL('image/png')
     dl.download = filename()
     dims.textContent = `${canvas.width} x ${canvas.height}`
@@ -179,6 +208,7 @@ async function main() {
   greenBox.addEventListener('change', draw)
   scaleSel.addEventListener('change', draw)
   modeSel.addEventListener('change', draw)
+  alphaBox.addEventListener('change', draw)
   draw()
 }
 
