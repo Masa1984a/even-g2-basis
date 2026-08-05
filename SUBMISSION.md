@@ -9,7 +9,7 @@ Even Hub の開発者ポータルに入力する内容をここに置いてお�
 |---|---|---|
 | `package_id` | `com.masa1984a.basisdrr` | 逆ドメイン・小文字・ハイフンなし・2セグメント以上 ✓ |
 | `name` | `Basis DRR` | 20文字以内、"Even" を含まない ✓ |
-| `version` | `1.0.1` | 3桁 semver ✓ |
+| `version` | `1.0.2` | 3桁 semver ✓ |
 | `min_sdk_version` | `0.0.13` | 現行フロア `0.0.12` 以上 ✓ |
 | `permissions` | `network` のみ | 実際に使用している権限だけ ✓ |
 | `supported_languages` | `en`, `ja` | |
@@ -28,7 +28,7 @@ https://basis-tracker-smoky.vercel.app/privacy
 ### en
 
 ```
-Track daily staking reward rates for BTC, ETH, PAXG and SOL right on your glasses.
+Track daily staking reward rates for basis.pro's BTC, ETH, PAXG and SOL right on your glasses.
 Opens straight to a combined chart of all four assets; scroll for a per-asset view
 with its average, high and low.
 ```
@@ -36,26 +36,40 @@ with its average, high and low.
 ### ja
 
 ```
-BTC・ETH・PAXG・SOL の日次ステーキング報酬率(DRR)をグラス上で確認できます。
+basis.proにおけるBTC・ETH・PAXG・SOL の日次ステーキング報酬率(DRR)をグラス上で確認できます。
 起動すると4資産をまとめた折れ線が表示され、スクロールすると資産ごとの
 平均・最高・最低を添えた個別グラフに切り替わります。
 ```
 
 ## スクリーンショット
 
-`shots/share-all-assets-green.png` (1152x576)
+`shots/store-screenshot-576x288-green.png` (576x288 = G2 のキャンバスと同じ)
 
 **公式ガイドはシミュレータの撮影機能で撮ることを求めているが、現行のシミュレータでは
 撮れない。** `updateImageRawData` が常に `sendFailed` になり画像コンテナが空のままになる
 既知の不具合があるため(詳細は `BUGREPORT-simulator.md`、実機では正常に描画される)。
 
-代わりに `share.html` で書き出している。これは「それっぽいモック」ではなく、実機に送る
-のと同じ経路を通した忠実な再現:
+代わりに `share.html` で書き出している。チャートだけを引き伸ばすのではなく、実機と同じ
+配置(ヘッダー + 288x144 のチャート + フッター)で合成しているので、「実機の描画と一致」
+という審査条件を満たす:
 
 1. `src/chart.ts` でネイティブ解像度 288x144 に描画 — 実機に送るのと同じピクセル
-2. 4bit(16階調)に量子化 — ハードウェアと同じ処理
-3. ニアレストネイバーで4倍拡大 — にじませない
+2. `LAYOUT`(`src/glass-text.ts`)の座標どおりに 576x288 へ合成 — main.ts と同じ定数
+3. 4bit(16階調)に量子化 — ハードウェアと同じ処理
 4. マイクロLEDの発色に合わせて緑に変換
+
+テキストだけは近似になる。ファームウェアの LVGL フォントは配布されておらず等幅でもない
+ため、同じ字形は再現できない。配置と内容は実機どおり。
+
+書き出し方:
+
+```bash
+npm run dev
+# http://localhost:5173/share.html を開く
+# サイズ「576 x 288 (ストア提出用・等倍)」を選び「shots/ に保存」
+```
+
+X 投稿など拡大表示したい場合は 2倍/4倍も選べる(ニアレストネイバーなのでにじまない)。
 
 審査で指摘された場合は、上記のシミュレータ不具合を説明する。
 

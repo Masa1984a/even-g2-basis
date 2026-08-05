@@ -17,13 +17,17 @@
       max-width: 100%; height: auto;
       image-rendering: pixelated;
     }
-    .row { display: flex; gap: 16px; align-items: center; margin: 14px 0; }
+    .row { display: flex; gap: 16px; align-items: center; margin: 14px 0; flex-wrap: wrap; }
     label { font-size: 13px; user-select: none; }
-    a#download {
+    select { background: #0d1117; color: #c9d1d9; border: 1px solid #30363d; border-radius: 5px; padding: 5px 8px; }
+    #dims { font-size: 12px; color: #8b949e; font-family: ui-monospace, Menlo, monospace; }
+    a#download, button#save {
       display: inline-block; padding: 7px 14px;
       background: #238636; color: #fff; text-decoration: none;
-      border-radius: 6px; font-size: 13px; font-weight: 500;
+      border: 0; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer;
     }
+    button#save { background: #1f6feb; }
+    button#save:disabled { opacity: .5; cursor: default; }
     .note {
       margin-top: 18px; padding: 12px 14px;
       background: #161b22; border: 1px solid #30363d; border-radius: 6px;
@@ -40,16 +44,28 @@
 
   <div class="row">
     <label><input type="checkbox" id="green" checked /> グラスの発色(緑)で書き出す</label>
+    <label>
+      サイズ
+      <select id="scale">
+        <option value="1" selected>576 x 288 (ストア提出用・等倍)</option>
+        <option value="2">1152 x 576 (2倍)</option>
+        <option value="4">2304 x 1152 (4倍)</option>
+      </select>
+    </label>
+    <span id="dims"></span>
     <a id="download" href="#" download>PNG をダウンロード</a>
+    <button id="save" type="button">shots/ に保存</button>
   </div>
 
   <p class="note">
-    実機に送られる画素をそのまま再現している(モックではない)。処理順は
+    G2 のキャンバスと同じ <code>576×288</code> に、実機と同じ配置で合成している。
     <code>chart.ts でネイティブ 288×144 に描画</code> →
+    <code>LAYOUT の座標どおりに配置</code> →
     <code>4bit(16階調)に量子化</code> →
-    <code>ニアレストネイバーで4倍拡大</code> →
     <code>緑に変換</code>。
-    量子化と発色はハードウェアがやることと同じなので、拡大率以外は実機の見え方と一致する。
+    量子化と発色はハードウェアがやることと同じなので、チャートの画素は実機と一致する。
+    <strong>テキストだけは近似</strong> — ファームウェアの LVGL フォントは配布されておらず
+    等幅でもないため、同じ字形は再現できない。配置と内容は実機どおり。
   </p>
 
   <script type="module" src="/src/share.ts"></script>

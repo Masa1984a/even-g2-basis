@@ -20,48 +20,13 @@ import {
 } from './chart'
 import { API_BASE, fetchDrr } from './api'
 import { log, setStatus } from './log'
+import {
+  LAYOUT, allChartHeader, allChartFooter, assetHeader, assetFooter,
+} from './glass-text'
 
 const REFRESH_MS = 5 * 60 * 1000
 const CACHE_KEY = 'basis-drr.rows'
 const VIEW_KEY = 'basis-drr.view'
-
-// ─── Text rendering ──────────────────────────────────────────────────────────
-// ファームウェアのフォントは等幅ではないので、桁揃えには頼らない。
-// 使う記号は design-guidelines が「確実に出る」と明記したものだけに絞る。
-
-function pct(v: number | null): string {
-  return v == null ? '—' : v.toFixed(3) + '%'
-}
-
-function allChartHeader(rows: DrrRow[]): string {
-  const from = rows[0]?.date?.slice(5) ?? '—'
-  const to = rows[rows.length - 1]?.date?.slice(5) ?? '—'
-  return `全資産 DRR  ${from} → ${to}`
-}
-
-/** 画像が出なくても数値だけで読めるようにしておく(フォールバックを兼ねる)。 */
-function allChartFooter(rows: DrrRow[]): string {
-  const pairs = ASSETS.map(a => `${a} ${pct(lastValue(rows, a))}`)
-  return [
-    `${pairs[0]}   ${pairs[1]}`,
-    `${pairs[2]}   ${pairs[3]}`,
-    'スクロール=資産別へ  ダブルタップ=終了',
-  ].join('\n')
-}
-
-function assetHeader(rows: DrrRow[], asset: Asset): string {
-  const s = statsOf(rows, asset)
-  return s ? `${asset} DRR (${s.n}日)  最新 ${s.last.toFixed(3)}%` : `${asset} — データなし`
-}
-
-function assetFooter(rows: DrrRow[], asset: Asset): string {
-  const s = statsOf(rows, asset)
-  if (!s) return 'スクロール=次へ  ダブルタップ=全資産へ'
-  return [
-    `平均 ${s.avg.toFixed(3)}%  最大 ${s.max.toFixed(3)}%  最小 ${s.min.toFixed(3)}%`,
-    'スクロール=次へ  ダブルタップ=全資産へ',
-  ].join('\n')
-}
 
 // ─── Containers ──────────────────────────────────────────────────────────────
 
@@ -79,9 +44,6 @@ function textProp(d: Partial<TextContainerProperty>): TextContainerProperty {
 }
 
 const imgProp = (d: Partial<ImageContainerProperty>) => new ImageContainerProperty(d)
-
-const CHART_X = Math.floor((SCREEN_W - CHART_W) / 2)
-const CHART_Y = 40
 
 // コンテナIDはページ間で使い回す。textContainerUpgrade は ID と名前の完全一致が必要。
 const ID = { catcher: 1, header: 2, chart: 3, footer: 4 } as const
@@ -104,19 +66,22 @@ function chartPage(header: string, footer: string): RebuildPageContainer {
       }),
       textProp({
         containerID: ID.header, containerName: 'header',
-        xPosition: 0, yPosition: 0, width: SCREEN_W, height: 34,
+        xPosition: LAYOUT.header.x, yPosition: LAYOUT.header.y,
+        width: LAYOUT.header.w, height: LAYOUT.header.h,
         content: header, isEventCapture: 0,
       }),
       textProp({
         containerID: ID.footer, containerName: 'footer',
-        xPosition: 0, yPosition: 196, width: SCREEN_W, height: 88,
+        xPosition: LAYOUT.footer.x, yPosition: LAYOUT.footer.y,
+        width: LAYOUT.footer.w, height: LAYOUT.footer.h,
         content: footer, isEventCapture: 0,
       }),
     ],
     imageObject: [
       imgProp({
         containerID: ID.chart, containerName: 'chart',
-        xPosition: CHART_X, yPosition: CHART_Y, width: CHART_W, height: CHART_H,
+        xPosition: LAYOUT.chart.x, yPosition: LAYOUT.chart.y,
+        width: LAYOUT.chart.w, height: LAYOUT.chart.h,
       }),
     ],
   })

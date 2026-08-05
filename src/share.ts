@@ -1,34 +1,76 @@
-// X 等での共有用に、全資産チャートをグラスの見え方で書き出すページ。
+// ストア掲載 / X 共有用に、グラスの画面をそのまま書き出すページ。
 //
-// 実機に忠実であることを優先し、次の順で処理する:
-//   1. src/chart.ts でネイティブ解像度(288x144)に描く — 実機に送るのと同じピクセル
-//   2. 4bit(16階調)に量子化 — ハードウェアがやることと同じ
-//   3. ニアレストネイバーで整数倍に拡大 — にじませない
+// 出力は G2 のキャンバスと同じ 576x288。チャートだけを引き伸ばすのではなく、
+// 実機と同じ配置(ヘッダー + 288x144 のチャート + フッター)で合成する。
+// ストア審査は「実機の描画と一致していること」を求めるため。
+//
+// 処理順:
+//   1. src/chart.ts でネイティブ 288x144 に描く — 実機に送るのと同じピクセル
+//   2. LAYOUT の座標どおりに 576x288 のキャンバスへ合成
+//   3. 4bit(16階調)に量子化 — ハードウェアがやることと同じ
 //   4. 緑に変換 — マイクロLEDの発色に合わせる
 //
-// つまりこれは「それっぽく作ったモック」ではなく、実機に送られる画素の忠実な再現。
-import { paintChart, ASSETS, CHART_W, CHART_H, type DrrRow } from './chart'
+// テキストだけは近似になる。ファームウェアの LVGL フォントは配布されておらず、
+// 等幅でもないため、同じ字形は再現できない。配置とチャートの画素は実機どおり。
+import { paintChart, ASSETS, SCREEN_W, SCREEN_H, CHART_W, CHART_H, type DrrRow } from './chart'
+import { LAYOUT, allChartHeader, allChartFooter } from './glass-text'
 import { API_BASE, fetchDrr } from './api'
-
-const SCALE = 4
-const OUT_W = CHART_W * SCALE
-const OUT_H = CHART_H * SCALE
 
 /** グラスの発色。純緑よりわずかに柔らかい。 */
 function tint(level: number): [number, number, number] {
   return [Math.round(level * 0.13), level, Math.round(level * 0.16)]
 }
 
-function renderShareImage(rows: DrrRow[], canvas: HTMLCanvasElement, green: boolean) {
-  // 1. ネイティブ解像度で描く
-  const src = document.createElement('canvas')
-  src.width = CHART_W
-  src.height = CHART_H
-  const sctx = src.getContext('2d')!
-  paintChart(sctx, rows, ASSETS, CHART_W, CHART_H)
+const FONT_PX = 15
+const LINE_H = 20
+const PAD_X = 8
 
-  // 2. 4bit 量子化 + 4. 緑変換
-  const img = sctx.getImageData(0, 0, CHART_W, CHART_H)
+/** テキストコンテナの中身を近似して描く。左寄せ・上寄せ、\n で改行。 */
+function drawTextBlock(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  box: { x: number; y: number; w: number; h: number }
+) {
+  ctx.save()
+  ctx.beginPath()
+  ctx.rect(box.x, box.y, box.w, box.h)
+  ctx.clip()
+  ctx.fillStyle = '#ffffff'
+  ctx.font = `${FONT_PX}px system-ui, -apple-system, "Segoe UI", "Yu Gothic UI", sans-serif`
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'top'
+  text.split('\n').forEach((line, i) => {
+    ctx.fillText(line, box.x + PAD_X, box.y + 4 + i * LINE_H)
+  })
+  ctx.restore()
+}
+
+/** 実機の画面を 576x288 で合成する(量子化・発色変換の前段)。 */
+function composeScreen(rows: DrrRow[]): HTMLCanvasElement {
+  const screen = document.createElement('canvas')
+  screen.width = SCREEN_W
+  screen.height = SCREEN_H
+  const ctx = screen.getContext('2d')!
+
+  ctx.fillStyle = '#000'
+  ctx.fillRect(0, 0, SCREEN_W, SCREEN_H)
+
+  // チャートは実機に送るのと同じ 288x144 で描き、等倍で貼る
+  const chart = document.createElement('canvas')
+  chart.width = CHART_W
+  chart.height = CHART_H
+  paintChart(chart.getContext('2d')!, rows, ASSETS, CHART_W, CHART_H)
+  ctx.drawImage(chart, LAYOUT.chart.x, LAYOUT.chart.y)
+
+  drawTextBlock(ctx, allChartHeader(rows), LAYOUT.header)
+  drawTextBlock(ctx, allChartFooter(rows), LAYOUT.footer)
+
+  return screen
+}
+
+/** 4bit 量子化と発色変換。ハードウェアがやることと同じ。 */
+function quantize(ctx: CanvasRenderingContext2D, w: number, h: number, green: boolean) {
+  const img = ctx.getImageData(0, 0, w, h)
   const d = img.data
   for (let i = 0; i < d.length; i += 4) {
     const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]
@@ -42,23 +84,39 @@ function renderShareImage(rows: DrrRow[], canvas: HTMLCanvasElement, green: bool
     }
     d[i + 3] = 255
   }
-  sctx.putImageData(img, 0, 0)
+  ctx.putImageData(img, 0, 0)
+}
 
-  // 3. ニアレストネイバーで拡大
-  canvas.width = OUT_W
-  canvas.height = OUT_H
+/**
+ * @param scale 1 ならストア提出用の 576x288。2以上は X 投稿など拡大表示向けに
+ *              ニアレストネイバーで整数倍する(にじませない)。
+ */
+function renderShareImage(
+  rows: DrrRow[],
+  canvas: HTMLCanvasElement,
+  green: boolean,
+  scale: number
+) {
+  const screen = composeScreen(rows)
+  quantize(screen.getContext('2d')!, SCREEN_W, SCREEN_H, green)
+
+  canvas.width = SCREEN_W * scale
+  canvas.height = SCREEN_H * scale
   const ctx = canvas.getContext('2d')!
   ctx.imageSmoothingEnabled = false
   ctx.fillStyle = '#000'
-  ctx.fillRect(0, 0, OUT_W, OUT_H)
-  ctx.drawImage(src, 0, 0, OUT_W, OUT_H)
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  ctx.drawImage(screen, 0, 0, canvas.width, canvas.height)
 }
 
 async function main() {
   const canvas = document.getElementById('out') as HTMLCanvasElement
   const status = document.getElementById('status')!
   const greenBox = document.getElementById('green') as HTMLInputElement
+  const scaleSel = document.getElementById('scale') as HTMLSelectElement
   const dl = document.getElementById('download') as HTMLAnchorElement
+  const save = document.getElementById('save') as HTMLButtonElement
+  const dims = document.getElementById('dims')!
 
   let rows: DrrRow[] = []
   try {
@@ -72,13 +130,37 @@ async function main() {
     return
   }
 
-  function draw() {
-    renderShareImage(rows, canvas, greenBox.checked)
-    dl.href = canvas.toDataURL('image/png')
-    dl.download = `even-g2-drr-${rows[rows.length - 1].date}.png`
+  function filename() {
+    const green = greenBox.checked ? 'green' : 'grey'
+    return `store-screenshot-${canvas.width}x${canvas.height}-${green}.png`
   }
 
+  function draw() {
+    renderShareImage(rows, canvas, greenBox.checked, Number(scaleSel.value))
+    dl.href = canvas.toDataURL('image/png')
+    dl.download = filename()
+    dims.textContent = `${canvas.width} x ${canvas.height}`
+  }
+
+  // dev サーバーの /__save-shot に POST して shots/ に保存する(vite.config.ts のプラグイン)
+  save.addEventListener('click', async () => {
+    save.disabled = true
+    try {
+      const res = await fetch('/__save-shot', {
+        method: 'POST',
+        body: JSON.stringify({ name: filename(), dataUrl: canvas.toDataURL('image/png') }),
+      })
+      const j = await res.json()
+      status.textContent = res.ok ? `保存しました: ${j.path}` : `保存に失敗: ${JSON.stringify(j)}`
+    } catch (e) {
+      status.textContent = `保存に失敗: ${e}`
+    } finally {
+      save.disabled = false
+    }
+  })
+
   greenBox.addEventListener('change', draw)
+  scaleSel.addEventListener('change', draw)
   draw()
 }
 
