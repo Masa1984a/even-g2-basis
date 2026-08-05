@@ -69,7 +69,8 @@ node node_modules/@evenrealities/evenhub-simulator/bin/index.js "http://localhos
 実機なしでレイアウト・イベント処理・ログを検証できて便利。
 
 **既知の制約: `updateImageRawData` が常に `sendFailed` になる(0.7.3 / 0.8.0 で確認)。**
-詳細と最小再現コードは [BUGREPORT-simulator.md](./BUGREPORT-simulator.md) にまとめてある。
+詳細と最小再現コードは [BUGREPORT-simulator.md](./BUGREPORT-simulator.md) にまとめてある
+(Discord 投稿用の短縮版は [BUGREPORT-simulator-short.md](./BUGREPORT-simulator-short.md))。
 シミュレータ本体の stdout に `failed to decode image: The image format could not be
 determined` と出る — シミュレータは `imageData` を PNG 等の**エンコード済み画像**として
 デコードしようとするが、このアプリ(および SDK のドキュメント、実機)は**生のグレースケール
