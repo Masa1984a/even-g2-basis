@@ -16,7 +16,7 @@ import {
 import {
   type Asset, type DrrRow, ASSETS,
   SCREEN_W, SCREEN_H, CHART_W, CHART_H, BAND_LO, BAND_HI,
-  seriesOf, lastValue, statsOf, renderChartBytes,
+  lastValue, statsOf, renderChartBytes,
 } from './chart'
 import { API_BASE, fetchDrr } from './api'
 import { log, setStatus } from './log'
@@ -29,34 +29,8 @@ const VIEW_KEY = 'basis-drr.view'
 // ファームウェアのフォントは等幅ではないので、桁揃えには頼らない。
 // 使う記号は design-guidelines が「確実に出る」と明記したものだけに絞る。
 
-function sparkline(series: (number | null)[], width: number): string {
-  const blocks = '▁▂▃▄▅▆▇█' // 公式に利用可と明記された文字
-  const tail = series.slice(-width)
-  const vals = tail.filter((v): v is number => v != null)
-  if (!vals.length) return '─'.repeat(width)
-  const min = Math.min(...vals)
-  const range = Math.max(...vals) - min || 1e-6
-  return tail.map(v => {
-    if (v == null) return ' '
-    return blocks[Math.min(7, Math.max(0, Math.round(((v - min) / range) * 7)))]
-  }).join('')
-}
-
 function pct(v: number | null): string {
   return v == null ? '—' : v.toFixed(3) + '%'
-}
-
-// 全画面テキストが縦にあふれると、ファームウェアがスクロール表示に切り替えて
-// タップ/スワイプを自前のスクロールに使ってしまう。行数は詰めて余裕を持たせる。
-function summaryText(rows: DrrRow[]): string {
-  const lines = [`資産別 DRR (${rows.length}日)`]
-  for (const a of ASSETS) {
-    lines.push(`${a} ${pct(lastValue(rows, a))}`)
-    lines.push(` ${sparkline(seriesOf(rows, a), 20)}`)
-  }
-  lines.push(`最終 ${rows[rows.length - 1]?.date ?? '—'} / 帯 ${BAND_LO}〜${BAND_HI}%`)
-  lines.push('タップ=次へ  ダブルタップ=終了')
-  return lines.join('\n')
 }
 
 function allChartHeader(rows: DrrRow[]): string {
@@ -71,7 +45,7 @@ function allChartFooter(rows: DrrRow[]): string {
   return [
     `${pairs[0]}   ${pairs[1]}`,
     `${pairs[2]}   ${pairs[3]}`,
-    'タップ=資産別へ  ダブルタップ=先頭',
+    'タップ=資産別へ  ダブルタップ=終了',
   ].join('\n')
 }
 
@@ -152,15 +126,14 @@ function chartPage(header: string, footer: string): RebuildPageContainer {
 
 // ─── Views ───────────────────────────────────────────────────────────────────
 
-type View = { kind: 'summary' } | { kind: 'all' } | { kind: 'asset'; asset: Asset }
+// ルート(index 0)は全資産の折れ線。以降はタップで資産別へ。
+type View = { kind: 'all' } | { kind: 'asset'; asset: Asset }
 const VIEWS: View[] = [
-  { kind: 'summary' },
   { kind: 'all' },
   ...ASSETS.map(asset => ({ kind: 'asset' as const, asset })),
 ]
 
-const viewLabel = (v: View) =>
-  v.kind === 'summary' ? '一覧' : v.kind === 'all' ? '全資産' : v.asset
+const viewLabel = (v: View) => (v.kind === 'all' ? '全資産' : v.asset)
 
 // ─── Main ────────────────────────────────────────────────────────────────────
 
@@ -188,12 +161,13 @@ async function main() {
   if (idx < 0 || idx >= VIEWS.length) idx = 0
   let rendering = false
 
+  // 起動時は最小構成。グラフは直後の render() で rebuild して描く。
   const init = await bridge.createStartUpPageContainer(new CreateStartUpPageContainer({
     containerTotalNum: 1,
     textObject: [textProp({
       containerID: ID.catcher, containerName: 'catcher',
       xPosition: 0, yPosition: 0, width: SCREEN_W, height: SCREEN_H,
-      content: rows.length ? summaryText(rows) : '\nBasis DRR\n\nデータを取得中…',
+      content: '\nBasis DRR\n\nデータを取得中…',
       isEventCapture: 1,
     })],
   }))
@@ -204,17 +178,6 @@ async function main() {
     return
   }
   log('ok', '起動ページ作成', rows.length ? `キャッシュ ${rows.length}日分` : '空')
-
-  async function showSummary() {
-    await bridge.rebuildPageContainer(new RebuildPageContainer({
-      containerTotalNum: 1,
-      textObject: [textProp({
-        containerID: ID.catcher, containerName: 'catcher',
-        xPosition: 0, yPosition: 0, width: SCREEN_W, height: SCREEN_H,
-        content: summaryText(rows), isEventCapture: 1,
-      })],
-    }))
-  }
 
   async function showChart(assets: Asset[], header: string, footer: string) {
     const ok = await bridge.rebuildPageContainer(chartPage(header, footer))
@@ -244,8 +207,7 @@ async function main() {
     const v = VIEWS[idx]
     setStatus(`表示中: ${viewLabel(v)}  (${idx + 1}/${VIEWS.length})  API: ${API_BASE}`)
     try {
-      if (v.kind === 'summary') await showSummary()
-      else if (v.kind === 'all') await showChart(ASSETS, allChartHeader(rows), allChartFooter(rows))
+      if (v.kind === 'all') await showChart(ASSETS, allChartHeader(rows), allChartFooter(rows))
       else await showChart([v.asset], assetHeader(rows, v.asset), assetFooter(rows, v.asset))
       log('ok', `描画完了: ${viewLabel(v)}`)
     } catch (e) {
