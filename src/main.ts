@@ -15,7 +15,7 @@ import {
 } from '@evenrealities/even_hub_sdk'
 import {
   type Asset, type DrrRow, ASSETS,
-  SCREEN_W, SCREEN_H, CHART_W, CHART_H, BAND_LO, BAND_HI,
+  SCREEN_W, SCREEN_H, CHART_W, CHART_H,
   lastValue, statsOf, renderChartBytes,
 } from './chart'
 import { API_BASE, fetchDrr } from './api'
@@ -45,7 +45,7 @@ function allChartFooter(rows: DrrRow[]): string {
   return [
     `${pairs[0]}   ${pairs[1]}`,
     `${pairs[2]}   ${pairs[3]}`,
-    'タップ=資産別へ  ダブルタップ=終了',
+    'スクロール=資産別へ  ダブルタップ=終了',
   ].join('\n')
 }
 
@@ -56,12 +56,10 @@ function assetHeader(rows: DrrRow[], asset: Asset): string {
 
 function assetFooter(rows: DrrRow[], asset: Asset): string {
   const s = statsOf(rows, asset)
-  if (!s) return 'タップ=次へ  ダブルタップ=先頭'
-  const inBand = s.last >= BAND_LO && s.last <= BAND_HI
+  if (!s) return 'スクロール=次へ  ダブルタップ=全資産へ'
   return [
     `平均 ${s.avg.toFixed(3)}%  最大 ${s.max.toFixed(3)}%  最小 ${s.min.toFixed(3)}%`,
-    `想定帯 ${BAND_LO}〜${BAND_HI}% : ${inBand ? '内' : '外'}`,
-    'タップ=次へ  ダブルタップ=先頭',
+    'スクロール=次へ  ダブルタップ=全資産へ',
   ].join('\n')
 }
 

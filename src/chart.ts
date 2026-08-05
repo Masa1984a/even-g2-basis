@@ -12,10 +12,6 @@ export const SCREEN_H = 288
 export const CHART_W = 288
 export const CHART_H = 144
 
-// 想定レンジ(README 準拠: DRR = reward ÷ staked × 100、妥当域 0.5〜0.9%)
-export const BAND_LO = 0.5
-export const BAND_HI = 0.9
-
 // 4bitグレースケール(緑16階調)では色で区別できないため、線種と明度で資産を分ける。
 // 凡例はグラス側のテキストではなく画像内に直接描く。ファームウェアのフォントは
 // 収録外の文字を黙って落とすため、破線を表す記号(╍ ┈ 等)が出ない可能性があるから。
@@ -51,12 +47,20 @@ export function statsOf(rows: DrrRow[], asset: Asset) {
   }
 }
 
-/** 描画する系列の値域から、想定帯を必ず含むY軸レンジを決める。 */
+/** 描画する系列の値域にフィットさせたY軸レンジ。 */
 function yDomain(allVals: number[]): [number, number] {
-  const lo = Math.min(BAND_LO, ...allVals)
-  const hi = Math.max(BAND_HI, ...allVals)
+  const lo = Math.min(...allVals)
+  const hi = Math.max(...allVals)
   const pad = (hi - lo) * 0.12 || 0.1
   return [Math.max(0, lo - pad), hi + pad]
+}
+
+/** グリッドが 3〜5 本になる丸い刻み幅を選ぶ。値域がデータ依存で伸縮するため固定値にしない。 */
+function gridStep(span: number): number {
+  for (const s of [0.05, 0.1, 0.2, 0.5, 1]) {
+    if (span / s <= 5) return s
+  }
+  return 2
 }
 
 /** Canvas にチャートを描く。プレビューでも実機でも同じ絵になる。 */
@@ -89,21 +93,20 @@ export function paintChart(
   const toX = (i: number) => pad.left + (i / Math.max(rows.length - 1, 1)) * cw
   const toY = (v: number) => pad.top + ch - ((v - dMin) / (dMax - dMin)) * ch
 
-  // 想定レンジ帯
-  ctx.fillStyle = 'rgba(255,255,255,0.13)'
-  ctx.fillRect(pad.left, toY(BAND_HI), cw, toY(BAND_LO) - toY(BAND_HI))
-
-  // Y軸グリッドとラベル(0.2%刻みの丸い値)
+  // Y軸グリッドとラベル
   ctx.strokeStyle = '#2a2a2a'
   ctx.fillStyle = '#909090'
   ctx.font = '9px monospace'
   ctx.textAlign = 'right'
   ctx.lineWidth = 1
-  const step = 0.2
-  for (let v = Math.ceil(dMin / step) * step; v <= dMax; v += step) {
+  const step = gridStep(dMax - dMin)
+  const digits = step < 0.1 ? 2 : 1
+  // 刻みの整数倍で回す。v += step を繰り返すと誤差が積もって目盛が1本ずれることがある。
+  for (let k = Math.ceil(dMin / step); k * step <= dMax; k++) {
+    const v = k * step
     const y = toY(v)
     ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + cw, y); ctx.stroke()
-    ctx.fillText(v.toFixed(1), pad.left - 3, y + 3)
+    ctx.fillText(v.toFixed(digits), pad.left - 3, y + 3)
   }
 
   // 軸
