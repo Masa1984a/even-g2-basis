@@ -69,6 +69,7 @@ node node_modules/@evenrealities/evenhub-simulator/bin/index.js "http://localhos
 実機なしでレイアウト・イベント処理・ログを検証できて便利。
 
 **既知の制約: `updateImageRawData` が常に `sendFailed` になる(0.7.3 / 0.8.0 で確認)。**
+詳細と最小再現コードは [BUGREPORT-simulator.md](./BUGREPORT-simulator.md) にまとめてある。
 シミュレータ本体の stdout に `failed to decode image: The image format could not be
 determined` と出る — シミュレータは `imageData` を PNG 等の**エンコード済み画像**として
 デコードしようとするが、このアプリ(および SDK のドキュメント、実機)は**生のグレースケール
@@ -87,6 +88,14 @@ npm run dev
 
 - グラス用アプリ: http://localhost:5173/
 - 描画プレビュー: http://localhost:5173/preview.html (実機・SDK不要。API が届かなければダミーデータで描画)
+- 共有用画像の書き出し: http://localhost:5173/share.html
+
+`share.html` は全資産チャートを X 等に貼れる大きさ(1152×576)で書き出す。
+`chart.ts` でネイティブ 288×144 に描く → 4bit(16階調)に量子化 → ニアレストネイバーで
+4倍拡大 → 緑に変換、の順で処理するので、**拡大率以外は実機の見え方と一致する**
+(それらしく作ったモックではない)。ページの「PNG をダウンロード」から保存できるほか、
+dev サーバー限定の `POST /__save-shot` で `shots/` に直接書き出せる
+(canvas の dataURL をシェル経由で運ばずに済む。`shots/` は git 管理外)。
 
 ## デプロイ (Vercel)
 

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>共有用画像 — Basis DRR on Even G2</title>
+  <style>
+    body {
+      margin: 0; padding: 24px;
+      background: #0d1117; color: #c9d1d9;
+      font: 14px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    h1 { font-size: 16px; font-weight: 600; margin: 0 0 4px; }
+    #status { font-size: 12px; color: #7ee787; margin-bottom: 16px; }
+    canvas {
+      display: block; background: #000;
+      border: 1px solid #30363d; border-radius: 4px;
+      max-width: 100%; height: auto;
+      image-rendering: pixelated;
+    }
+    .row { display: flex; gap: 16px; align-items: center; margin: 14px 0; }
+    label { font-size: 13px; user-select: none; }
+    a#download {
+      display: inline-block; padding: 7px 14px;
+      background: #238636; color: #fff; text-decoration: none;
+      border-radius: 6px; font-size: 13px; font-weight: 500;
+    }
+    .note {
+      margin-top: 18px; padding: 12px 14px;
+      background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+      font-size: 12px; color: #8b949e; max-width: 1160px;
+    }
+    .note code { color: #c9d1d9; }
+  </style>
+</head>
+<body>
+  <h1>共有用画像 — 全資産 DRR</h1>
+  <div id="status">読み込み中…</div>
+
+  <canvas id="out"></canvas>
+
+  <div class="row">
+    <label><input type="checkbox" id="green" checked /> グラスの発色(緑)で書き出す</label>
+    <a id="download" href="#" download>PNG をダウンロード</a>
+  </div>
+
+  <p class="note">
+    実機に送られる画素をそのまま再現している(モックではない)。処理順は
+    <code>chart.ts でネイティブ 288×144 に描画</code> →
+    <code>4bit(16階調)に量子化</code> →
+    <code>ニアレストネイバーで4倍拡大</code> →
+    <code>緑に変換</code>。
+    量子化と発色はハードウェアがやることと同じなので、拡大率以外は実機の見え方と一致する。
+  </p>
+
+  <script type="module" src="/src/share.ts"></script>
+</body>
+</html>
