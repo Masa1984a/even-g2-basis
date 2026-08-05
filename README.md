@@ -57,6 +57,26 @@ Y軸はデータの値域にフィットさせ、グリッドは3〜5本にな�
 Even Hub アプリの Developer Mode コンソールでも同じ内容が読める。
 `updateImageRawData` の結果コードもここに出るので、画像が出ないときはまずこれを見る。
 
+### 公式シミュレータ (`@evenrealities/evenhub-simulator`)
+
+```bash
+node node_modules/@evenrealities/evenhub-simulator/bin/index.js "http://localhost:5173/" --automation-port 9898
+```
+
+`--automation-port` を付けると `http://127.0.0.1:<port>` に HTTP API が立ち、
+`GET /api/screenshot/glasses`(576x288 のフレームバッファ PNG)、`GET /api/console`、
+`POST /api/input`(`up`/`down`/`click`/`double_click`)がスクリプトから叩ける。
+実機なしでレイアウト・イベント処理・ログを検証できて便利。
+
+**既知の制約: `updateImageRawData` が常に `sendFailed` になる(0.7.3 / 0.8.0 で確認)。**
+シミュレータ本体の stdout に `failed to decode image: The image format could not be
+determined` と出る — シミュレータは `imageData` を PNG 等の**エンコード済み画像**として
+デコードしようとするが、このアプリ(および SDK のドキュメント、実機)は**生のグレースケール
+バイト配列**(1px=1byte)を送る仕様。実機ではこの生配列で正しく描画されることを確認済みなので、
+本番コードをシミュレータ都合で変える必要はない。テキストコンテナ・レイアウト・イベント処理は
+シミュレータでも正しく動く。グラフ画像だけはシミュレータで確認できないので、見た目の検証は
+`preview.html` を使う(`src/chart.ts` を直接呼ぶので実機と同じ描画になる)。
+
 ## 開発
 
 ```bash
