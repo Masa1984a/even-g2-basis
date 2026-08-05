@@ -17,11 +17,13 @@ export const BAND_LO = 0.5
 export const BAND_HI = 0.9
 
 // 4bitグレースケール(緑16階調)では色で区別できないため、線種と明度で資産を分ける。
-export const STYLE: Record<Asset, { dash: number[]; grey: string; mark: string }> = {
-  BTC:  { dash: [],            grey: '#ffffff', mark: '───' },
-  ETH:  { dash: [7, 4],        grey: '#e0e0e0', mark: '╍╍╍' },
-  PAXG: { dash: [2, 4],        grey: '#b0b0b0', mark: '┈┈┈' },
-  SOL:  { dash: [10, 4, 2, 4], grey: '#d0d0d0', mark: '╍━╍' },
+// 凡例はグラス側のテキストではなく画像内に直接描く。ファームウェアのフォントは
+// 収録外の文字を黙って落とすため、破線を表す記号(╍ ┈ 等)が出ない可能性があるから。
+export const STYLE: Record<Asset, { dash: number[]; grey: string }> = {
+  BTC:  { dash: [],            grey: '#ffffff' },
+  ETH:  { dash: [7, 4],        grey: '#e0e0e0' },
+  PAXG: { dash: [2, 4],        grey: '#b0b0b0' },
+  SOL:  { dash: [10, 4, 2, 4], grey: '#d0d0d0' },
 }
 
 export function seriesOf(rows: DrrRow[], asset: Asset): (number | null)[] {
@@ -77,7 +79,9 @@ export function paintChart(
     return
   }
 
-  const pad = { top: 6, right: 6, bottom: 14, left: 26 }
+  // 複数資産のときは線の右端に資産名を書くので、その分だけ右余白を広げる。
+  const multi = assets.length > 1
+  const pad = { top: 6, right: multi ? 32 : 6, bottom: 14, left: 26 }
   const cw = w - pad.left - pad.right
   const ch = h - pad.top - pad.bottom
   const [dMin, dMax] = yDomain(allVals)
@@ -120,22 +124,59 @@ export function paintChart(
   // 各資産の折れ線
   ctx.lineJoin = 'round'
   ctx.lineCap = 'round'
+  const ends: { asset: Asset; y: number }[] = []
   for (const a of assets) {
     const st = STYLE[a]
     ctx.strokeStyle = st.grey
-    ctx.lineWidth = assets.length === 1 ? 2 : 1.5
-    ctx.setLineDash(assets.length === 1 ? [] : st.dash)
+    ctx.lineWidth = multi ? 1.5 : 2
+    ctx.setLineDash(multi ? st.dash : [])
     ctx.beginPath()
     let drawing = false
+    let lastY: number | null = null
     rows.forEach((r, i) => {
       const v = r[a]
       if (v == null) { drawing = false; return }
       const x = toX(i), y = toY(v)
       if (!drawing) { ctx.moveTo(x, y); drawing = true } else { ctx.lineTo(x, y) }
+      lastY = y
     })
     ctx.stroke()
+    if (lastY != null) ends.push({ asset: a, y: lastY })
   }
   ctx.setLineDash([])
+
+  if (multi) drawEndLabels(ctx, ends, pad.left + cw + 3, pad.top, ch)
+}
+
+/** 線の右端に資産名を置く。値が近いと重なるので、上下に押し広げてから描く。 */
+function drawEndLabels(
+  ctx: CanvasRenderingContext2D,
+  ends: { asset: Asset; y: number }[],
+  x: number,
+  top: number,
+  ch: number
+): void {
+  const gap = 10
+  const sorted = [...ends].sort((a, b) => a.y - b.y)
+
+  // 上から順に最低間隔を確保し、はみ出した分を下から詰め直す
+  for (let i = 1; i < sorted.length; i++) {
+    sorted[i].y = Math.max(sorted[i].y, sorted[i - 1].y + gap)
+  }
+  const overflow = sorted[sorted.length - 1]?.y - (top + ch)
+  if (overflow > 0) {
+    for (const e of sorted) e.y -= overflow
+    for (let i = sorted.length - 2; i >= 0; i--) {
+      sorted[i].y = Math.min(sorted[i].y, sorted[i + 1].y - gap)
+    }
+  }
+
+  ctx.font = '9px sans-serif'
+  ctx.textAlign = 'left'
+  for (const e of sorted) {
+    ctx.fillStyle = STYLE[e.asset].grey
+    ctx.fillText(e.asset, x, Math.max(top + 6, e.y) + 3)
+  }
 }
 
 /** グラスに送るグレースケール配列(1px=1byte)を作る。宿主側で4bitに量子化される。 */

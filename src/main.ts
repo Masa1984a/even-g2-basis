@@ -14,18 +14,23 @@ import {
   RebuildPageContainer,
 } from '@evenrealities/even_hub_sdk'
 import {
-  type Asset, type DrrRow, ASSETS, STYLE,
-  SCREEN_W, CHART_W, CHART_H, BAND_LO, BAND_HI,
+  type Asset, type DrrRow, ASSETS,
+  SCREEN_W, SCREEN_H, CHART_W, CHART_H, BAND_LO, BAND_HI,
   seriesOf, lastValue, statsOf, renderChartBytes,
 } from './chart'
 import { API_BASE, fetchDrr } from './api'
+import { log, setStatus } from './log'
 
 const REFRESH_MS = 5 * 60 * 1000
+const CACHE_KEY = 'basis-drr.rows'
+const VIEW_KEY = 'basis-drr.view'
 
 // ─── Text rendering ──────────────────────────────────────────────────────────
+// ファームウェアのフォントは等幅ではないので、桁揃えには頼らない。
+// 使う記号は design-guidelines が「確実に出る」と明記したものだけに絞る。
 
 function sparkline(series: (number | null)[], width: number): string {
-  const blocks = '▁▂▃▄▅▆▇█'
+  const blocks = '▁▂▃▄▅▆▇█' // 公式に利用可と明記された文字
   const tail = series.slice(-width)
   const vals = tail.filter((v): v is number => v != null)
   if (!vals.length) return '─'.repeat(width)
@@ -38,122 +43,115 @@ function sparkline(series: (number | null)[], width: number): string {
 }
 
 function pct(v: number | null): string {
-  return v == null ? '  —  ' : v.toFixed(3) + '%'
+  return v == null ? '—' : v.toFixed(3) + '%'
 }
 
+// 全画面テキストが縦にあふれると、ファームウェアがスクロール表示に切り替えて
+// タップ/スワイプを自前のスクロールに使ってしまう。行数は詰めて余裕を持たせる。
 function summaryText(rows: DrrRow[]): string {
-  const lines = [
-    `  資産別 DRR  (${rows.length}日分)`,
-    '  ─────────────────────────────────────',
-  ]
+  const lines = [`資産別 DRR (${rows.length}日)`]
   for (const a of ASSETS) {
-    const spark = sparkline(seriesOf(rows, a), 24)
-    lines.push(`  ${a.padEnd(5)} ${pct(lastValue(rows, a))}  ${spark}`)
+    lines.push(`${a} ${pct(lastValue(rows, a))}`)
+    lines.push(` ${sparkline(seriesOf(rows, a), 20)}`)
   }
-  lines.push('')
-  lines.push(`  最終 ${rows[rows.length - 1]?.date ?? '—'}    想定帯 ${BAND_LO}〜${BAND_HI}%`)
-  lines.push('  タップ→全資産グラフ   ダブルタップ→先頭')
+  lines.push(`最終 ${rows[rows.length - 1]?.date ?? '—'} / 帯 ${BAND_LO}〜${BAND_HI}%`)
+  lines.push('タップ=次へ  ダブルタップ=終了')
   return lines.join('\n')
 }
 
 function allChartHeader(rows: DrrRow[]): string {
   const from = rows[0]?.date?.slice(5) ?? '—'
   const to = rows[rows.length - 1]?.date?.slice(5) ?? '—'
-  return `  全資産 DRR 推移   ${from} → ${to}`
+  return `全資産 DRR  ${from} → ${to}`
 }
 
-function allChartLegend(rows: DrrRow[]): string {
-  const c = ASSETS.map(a => `${STYLE[a].mark} ${a} ${pct(lastValue(rows, a))}`)
+/** 画像が出なくても数値だけで読めるようにしておく(フォールバックを兼ねる)。 */
+function allChartFooter(rows: DrrRow[]): string {
+  const pairs = ASSETS.map(a => `${a} ${pct(lastValue(rows, a))}`)
   return [
-    `  ${c[0]}      ${c[1]}`,
-    `  ${c[2]}      ${c[3]}`,
-    '',
-    '  タップ→資産別の個別グラフへ',
+    `${pairs[0]}   ${pairs[1]}`,
+    `${pairs[2]}   ${pairs[3]}`,
+    'タップ=資産別へ  ダブルタップ=先頭',
   ].join('\n')
 }
 
 function assetHeader(rows: DrrRow[], asset: Asset): string {
   const s = statsOf(rows, asset)
-  if (!s) return `  ${asset} — データなし`
-  return [
-    `  ${asset} の DRR 推移   (${s.n}日)`,
-    `  最新 ${s.last.toFixed(3)}%   平均 ${s.avg.toFixed(3)}%`,
-  ].join('\n')
+  return s ? `${asset} DRR (${s.n}日)  最新 ${s.last.toFixed(3)}%` : `${asset} — データなし`
 }
 
 function assetFooter(rows: DrrRow[], asset: Asset): string {
   const s = statsOf(rows, asset)
-  if (!s) return '  タップ→次へ'
+  if (!s) return 'タップ=次へ  ダブルタップ=先頭'
   const inBand = s.last >= BAND_LO && s.last <= BAND_HI
   return [
-    `  最大 ${s.max.toFixed(3)}%   最小 ${s.min.toFixed(3)}%`,
-    `  想定帯 ${BAND_LO}〜${BAND_HI}% : ${inBand ? '内 ✓' : '外 ⚠'}`,
-    '',
-    '  タップ→次の資産   ダブルタップ→先頭',
+    `平均 ${s.avg.toFixed(3)}%  最大 ${s.max.toFixed(3)}%  最小 ${s.min.toFixed(3)}%`,
+    `想定帯 ${BAND_LO}〜${BAND_HI}% : ${inBand ? '内' : '外'}`,
+    'タップ=次へ  ダブルタップ=先頭',
   ].join('\n')
 }
 
 // ─── Containers ──────────────────────────────────────────────────────────────
 
-const text = (d: Partial<TextContainerProperty>) => new TextContainerProperty(d)
-const image = (d: Partial<ImageContainerProperty>) => new ImageContainerProperty(d)
+// createStartUpPageContainer / rebuildPageContainer は 1,000 文字まで。
+// 全画面でも 400-500 字が目安で、超えるとスクロール扱いになり入力を奪われる。
+const MAX_CONTENT = 480
+
+function textProp(d: Partial<TextContainerProperty>): TextContainerProperty {
+  const c = d.content
+  if (c && c.length > MAX_CONTENT) {
+    log('warn', `テキストが長すぎます (${c.length}字) — 切り詰めます`, d.containerName)
+    d = { ...d, content: c.slice(0, MAX_CONTENT) }
+  }
+  return new TextContainerProperty(d)
+}
+
+const imgProp = (d: Partial<ImageContainerProperty>) => new ImageContainerProperty(d)
 
 const CHART_X = Math.floor((SCREEN_W - CHART_W) / 2)
+const CHART_Y = 40
 
-/** ヘッダー + グラフ + フッターの共通レイアウトを組む。 */
-async function showChartPage(
-  bridge: EvenAppBridge,
-  rows: DrrRow[],
-  assets: Asset[],
-  header: string,
-  footer: string
-) {
-  await bridge.rebuildPageContainer(new RebuildPageContainer({
-    containerTotalNum: 3,
+// コンテナIDはページ間で使い回す。textContainerUpgrade は ID と名前の完全一致が必要。
+const ID = { catcher: 1, header: 2, chart: 3, footer: 4 } as const
+
+/**
+ * 画像ページの推奨レイアウト(公式ドキュメント準拠)。
+ * 入力は「全画面の空テキストコンテナ」で受け、画像はその上に描く。
+ * zOrderIndex は使わない — 使うと同一ページの全コンテナで必須になり
+ * min_sdk_version も 0.0.12 以上に上がるため。省略時は「先に宣言した方が背面」。
+ */
+function chartPage(header: string, footer: string): RebuildPageContainer {
+  return new RebuildPageContainer({
+    containerTotalNum: 4,
     textObject: [
-      text({
-        containerID: 1, containerName: 'header',
-        xPosition: 0, yPosition: 0, width: SCREEN_W, height: 34,
-        content: header, isEventCapture: 1,
+      // 先頭に宣言 = 背面。入力を受け取る唯一のコンテナ。
+      textProp({
+        containerID: ID.catcher, containerName: 'catcher',
+        xPosition: 0, yPosition: 0, width: SCREEN_W, height: SCREEN_H,
+        content: ' ', isEventCapture: 1,
       }),
-      text({
-        containerID: 3, containerName: 'footer',
-        xPosition: 0, yPosition: 190, width: SCREEN_W, height: 96,
+      textProp({
+        containerID: ID.header, containerName: 'header',
+        xPosition: 0, yPosition: 0, width: SCREEN_W, height: 34,
+        content: header, isEventCapture: 0,
+      }),
+      textProp({
+        containerID: ID.footer, containerName: 'footer',
+        xPosition: 0, yPosition: 196, width: SCREEN_W, height: 88,
         content: footer, isEventCapture: 0,
       }),
     ],
     imageObject: [
-      image({
-        containerID: 2, containerName: 'chart',
-        xPosition: CHART_X, yPosition: 40, width: CHART_W, height: CHART_H,
+      imgProp({
+        containerID: ID.chart, containerName: 'chart',
+        xPosition: CHART_X, yPosition: CHART_Y, width: CHART_W, height: CHART_H,
       }),
     ],
-  }))
-
-  const result = await bridge.updateImageRawData(new ImageRawDataUpdate({
-    containerID: 2,
-    containerName: 'chart',
-    imageData: renderChartBytes(rows, assets, CHART_W, CHART_H),
-  }))
-  if (!ImageRawDataUpdateResult.isSuccess(result)) {
-    console.warn('updateImageRawData failed:', result)
-  }
-}
-
-async function showSummary(bridge: EvenAppBridge, rows: DrrRow[]) {
-  await bridge.rebuildPageContainer(new RebuildPageContainer({
-    containerTotalNum: 1,
-    textObject: [text({
-      containerID: 1, containerName: 'main',
-      xPosition: 0, yPosition: 0, width: SCREEN_W, height: 288,
-      content: summaryText(rows), isEventCapture: 1,
-    })],
-  }))
+  })
 }
 
 // ─── Views ───────────────────────────────────────────────────────────────────
 
-// 一覧(テキスト) → 全資産グラフ → 資産ごとの個別グラフ
 type View = { kind: 'summary' } | { kind: 'all' } | { kind: 'asset'; asset: Asset }
 const VIEWS: View[] = [
   { kind: 'summary' },
@@ -161,82 +159,165 @@ const VIEWS: View[] = [
   ...ASSETS.map(asset => ({ kind: 'asset' as const, asset })),
 ]
 
+const viewLabel = (v: View) =>
+  v.kind === 'summary' ? '一覧' : v.kind === 'all' ? '全資産' : v.asset
+
 // ─── Main ────────────────────────────────────────────────────────────────────
 
+function loadCache(): DrrRow[] {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY)
+    return raw ? (JSON.parse(raw) as DrrRow[]) : []
+  } catch { return [] }
+}
+
 async function main() {
+  log('info', 'bridge を待機中…')
   const bridge = await waitForEvenAppBridge()
+  log('ok', 'bridge 準備完了')
+
+  try {
+    const dev = await bridge.getDeviceInfo()
+    log('info', 'デバイス', dev ? { model: dev.model, battery: dev.status?.batteryLevel } : 'なし')
+  } catch (e) { log('warn', 'getDeviceInfo 失敗', e) }
+
+  // 起動直後は前回のキャッシュで描画し、ネットワークを待たせない
+  // (スマホがロックされて再開したときも同じ経路で復帰する)
+  let rows: DrrRow[] = loadCache()
+  let idx = Number(localStorage.getItem(VIEW_KEY) ?? 0) || 0
+  if (idx < 0 || idx >= VIEWS.length) idx = 0
+  let rendering = false
 
   const init = await bridge.createStartUpPageContainer(new CreateStartUpPageContainer({
     containerTotalNum: 1,
-    textObject: [text({
-      containerID: 1, containerName: 'main',
-      xPosition: 0, yPosition: 0, width: SCREEN_W, height: 288,
-      content: '\n  Basis DRR\n\n  データを取得中...',
+    textObject: [textProp({
+      containerID: ID.catcher, containerName: 'catcher',
+      xPosition: 0, yPosition: 0, width: SCREEN_W, height: SCREEN_H,
+      content: rows.length ? summaryText(rows) : '\nBasis DRR\n\nデータを取得中…',
       isEventCapture: 1,
     })],
   }))
 
   if (init !== StartUpPageCreateResult.success) {
-    console.error('createStartUpPageContainer failed:', init)
+    log('error', 'createStartUpPageContainer 失敗', StartUpPageCreateResult[init] ?? init)
+    setStatus('起動失敗 — グラスの接続を確認してください')
     return
   }
+  log('ok', '起動ページ作成', rows.length ? `キャッシュ ${rows.length}日分` : '空')
 
-  let rows: DrrRow[] = []
-  let idx = 0
-  let rendering = false
+  async function showSummary() {
+    await bridge.rebuildPageContainer(new RebuildPageContainer({
+      containerTotalNum: 1,
+      textObject: [textProp({
+        containerID: ID.catcher, containerName: 'catcher',
+        xPosition: 0, yPosition: 0, width: SCREEN_W, height: SCREEN_H,
+        content: summaryText(rows), isEventCapture: 1,
+      })],
+    }))
+  }
+
+  async function showChart(assets: Asset[], header: string, footer: string) {
+    const ok = await bridge.rebuildPageContainer(chartPage(header, footer))
+    if (!ok) { log('error', 'rebuildPageContainer が false を返しました'); return }
+
+    const bytes = renderChartBytes(rows, assets, CHART_W, CHART_H)
+    const result = await bridge.updateImageRawData(new ImageRawDataUpdate({
+      containerID: ID.chart, containerName: 'chart', imageData: bytes,
+    }))
+
+    if (ImageRawDataUpdateResult.isSuccess(result)) {
+      log('ok', `画像送信 ${CHART_W}x${CHART_H}`, `${bytes.length}B`)
+      return
+    }
+    // 画像が出せなくても数値は読めるよう、フッターに理由を出す
+    log('error', 'updateImageRawData 失敗', result)
+    await bridge.textContainerUpgrade(new TextContainerUpgrade({
+      containerID: ID.footer, containerName: 'footer',
+      content: `${footer}\n(グラフ描画に失敗: ${result})`,
+    }))
+  }
 
   async function render() {
-    if (rendering || !rows.length) return
+    if (rendering) { log('warn', '描画中のため要求をスキップ'); return }
+    if (!rows.length) return
     rendering = true
+    const v = VIEWS[idx]
+    setStatus(`表示中: ${viewLabel(v)}  (${idx + 1}/${VIEWS.length})  API: ${API_BASE}`)
     try {
-      const v = VIEWS[idx]
-      if (v.kind === 'summary') {
-        await showSummary(bridge, rows)
-      } else if (v.kind === 'all') {
-        await showChartPage(bridge, rows, ASSETS, allChartHeader(rows), allChartLegend(rows))
-      } else {
-        await showChartPage(bridge, rows, [v.asset], assetHeader(rows, v.asset), assetFooter(rows, v.asset))
-      }
+      if (v.kind === 'summary') await showSummary()
+      else if (v.kind === 'all') await showChart(ASSETS, allChartHeader(rows), allChartFooter(rows))
+      else await showChart([v.asset], assetHeader(rows, v.asset), assetFooter(rows, v.asset))
+      log('ok', `描画完了: ${viewLabel(v)}`)
     } catch (e) {
-      console.error('render failed:', e)
+      log('error', `描画失敗: ${viewLabel(v)}`, e)
     } finally {
       rendering = false
     }
   }
 
+  function goTo(next: number) {
+    idx = (next + VIEWS.length) % VIEWS.length
+    localStorage.setItem(VIEW_KEY, String(idx))
+    void render()
+  }
+
   bridge.onEvenHubEvent((event: EvenHubEvent) => {
     const t = event.textEvent?.eventType ?? event.sysEvent?.eventType
     if (t == null || t === OsEventTypeList.IMU_DATA_REPORT) return
+    log('info', 'イベント', OsEventTypeList[t] ?? t)
 
-    if (t === OsEventTypeList.CLICK_EVENT || t === OsEventTypeList.SCROLL_BOTTOM_EVENT) {
-      idx = (idx + 1) % VIEWS.length
-    } else if (t === OsEventTypeList.SCROLL_TOP_EVENT) {
-      idx = (idx - 1 + VIEWS.length) % VIEWS.length
-    } else if (t === OsEventTypeList.DOUBLE_CLICK_EVENT) {
-      idx = 0
-    } else {
-      return
+    switch (t) {
+      case OsEventTypeList.CLICK_EVENT:
+      case OsEventTypeList.SCROLL_BOTTOM_EVENT:
+        goTo(idx + 1)
+        break
+      case OsEventTypeList.SCROLL_TOP_EVENT:
+        goTo(idx - 1)
+        break
+      case OsEventTypeList.DOUBLE_CLICK_EVENT:
+        // ルートページのダブルタップはシステム終了ダイアログを出すことが必須。
+        // 独自UIを割り当てると審査で自動リジェクトされる。
+        if (idx === 0) {
+          log('info', '終了ダイアログを要求')
+          void bridge.shutDownPageContainer(1)
+        } else {
+          goTo(0)
+        }
+        break
+      case OsEventTypeList.FOREGROUND_ENTER_EVENT:
+        log('info', '前面に復帰 — 再描画')
+        void render()
+        break
+      default:
+        break
     }
-    void render()
   })
 
-  try {
-    rows = await fetchDrr()
-    if (!rows.length) throw new Error('データが空です')
-    await render()
-  } catch (e) {
-    await bridge.textContainerUpgrade(new TextContainerUpgrade({
-      containerID: 1, containerName: 'main',
-      content: `\n  データ取得に失敗しました\n\n  ${e}\n\n  API: ${API_BASE || '(VITE_API_BASE 未設定)'}/api/drr`,
-    }))
-  }
-
-  setInterval(async () => {
+  async function refresh(reason: string) {
     try {
       const next = await fetchDrr()
-      if (next.length) { rows = next; await render() }
-    } catch { /* 次の周期で再試行 */ }
-  }, REFRESH_MS)
+      if (!next.length) throw new Error('データが空です')
+      rows = next
+      try { localStorage.setItem(CACHE_KEY, JSON.stringify(next)) } catch { /* 容量超過は無視 */ }
+      log('ok', `取得成功 (${reason})`, `${next.length}日分`)
+      await render()
+    } catch (e) {
+      log('error', `取得失敗 (${reason})`, e)
+      if (!rows.length) {
+        await bridge.textContainerUpgrade(new TextContainerUpgrade({
+          containerID: ID.catcher, containerName: 'catcher',
+          content: `\nデータ取得に失敗しました\n\n${e}\n\n${API_BASE || '(VITE_API_BASE 未設定)'}`,
+        }))
+      }
+    }
+  }
+
+  if (rows.length) await render()
+  await refresh('起動時')
+  setInterval(() => void refresh('定期更新'), REFRESH_MS)
 }
 
-main().catch(console.error)
+main().catch(e => {
+  log('error', '起動に失敗しました', e)
+  setStatus('起動失敗')
+})
